@@ -1,0 +1,13 @@
+replicaCount: 1
+
+image:
+  repository: stefanprodan/podinfo
+  tag: "6.4.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 9898
+
+config:
+  uiColor: "#1a1a2e"

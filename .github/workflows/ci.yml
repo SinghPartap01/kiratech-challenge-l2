@@ -1,0 +1,35 @@
+name: Kubernetes Manifest Validation
+
+on: [push, pull_request]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Helm lint
+        run: helm lint ./helm
+
+      - name: Render Helm chart
+        run: helm template podinfo-release ./helm --namespace demo > rendered.yaml
+
+      - name: Validate YAML with kubeconform
+        run: |
+          docker run --rm -v "$PWD:/work" ghcr.io/yannh/kubeconform:latest \
+            -strict -ignore-missing-schemas -summary \
+            /work/podinfo.yaml /work/rendered.yaml /work/podinfo-monitor.yaml
+
+      - name: Shellcheck per deploy.sh
+        run: shellcheck deploy.sh

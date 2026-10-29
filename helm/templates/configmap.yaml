@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-config
+  namespace: {{ .Release.Namespace }}
+data:
+  PODINFO_UI_COLOR: {{ .Values.config.uiColor | quote }}

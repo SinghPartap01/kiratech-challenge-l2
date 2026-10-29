@@ -1,0 +1,6 @@
+apiVersion: v2
+name: podinfo-chart
+description: Un Helm chart per il deploy di Podinfo su Kubernetes
+type: application
+version: 0.1.0
+appVersion: "6.4.0"
