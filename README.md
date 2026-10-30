@@ -21,30 +21,35 @@ Podinfo è una singola applicazione progettata per mostrare le best practice su 
 Il flusso del deploy segue le best practice di Kubernetes:
 
 ```mermaid
-flowchart LR
+flowchart TD
     classDef external fill:#1e1e2f,stroke:#4e4e6f,stroke-width:2px,color:#ffffff;
     classDef k8s fill:transparent,stroke:#5c7c9e,stroke-width:2px,stroke-dasharray: 5 5,color:#ffffff;
     classDef app fill:#0f2417,stroke:#2f855a,stroke-width:1px,color:#ffffff;
     classDef obs fill:#2b1a0f,stroke:#c05621,stroke-width:1px,color:#ffffff;
 
     Browser["Browser Locale<br/>(localhost:9898)"]:::external
-    PF["kubectl port-forward"]:::external
+    PF["kubectl port-forward<br/>svc/podinfo 9898:9898"]:::external
+
+    Browser --> PF
 
     subgraph K8s ["Kind Kubernetes Cluster"]
+        direction TB
         API["Kubernetes API Server"]:::app
+
+        PF -. "Stabilisce il tunnel" .-> API
+        PF -. "Connessione al Pod selezionato" .-> POD
 
         subgraph Demo ["Namespace: demo"]
             direction TB
+            SM["ServiceMonitor<br/>podinfo-monitor"]:::obs
             SVC["Service: podinfo<br/>Port: 9898"]:::app
             POD["Pod: podinfo<br/>Port: 9898"]:::app
             CM["ConfigMap<br/>podinfo-config"]:::app
             SEC["Secret<br/>podinfo-secret"]:::app
-            SM["ServiceMonitor<br/>podinfo-monitor"]:::obs
 
             SVC --> POD
             CM -. "envFrom" .-> POD
             SEC -. "envFrom" .-> POD
-            SM -. "Configura scraping" .-> SVC
         end
 
         subgraph Mon ["Namespace: monitoring"]
@@ -54,13 +59,10 @@ flowchart LR
 
             GRAF -->|"Query metriche"| PROM
         end
+
+        SM -. "Definisce i target di scraping" .-> PROM
+        PROM -->|"Scrape /metrics"| SVC
     end
-
-    Browser --> PF
-    PF -. "Tunnel tramite API Server" .-> API
-    API -. "Port-forward verso Pod" .-> POD
-
-    PROM -->|"Scrape /metrics"| SVC
 
     class K8s k8s;
 ```
