@@ -21,18 +21,40 @@ Podinfo è una singola applicazione progettata per mostrare le best practice su 
 Il flusso del deploy segue le best practice di Kubernetes:
 
 flowchart LR
-    B["Browser su localhost:9898"] -->|kubectl port-forward| API["API server di kind"]
-    API --> POD
-    subgraph demo["namespace demo"]
-        SVC["Service podinfo :9898"] --> POD["Pod podinfo"]
-        CM["ConfigMap podinfo-config"] -. variabili d'ambiente .-> POD
-        SEC["Secret podinfo-secret"] -. variabili d'ambiente .-> POD
-    end
-    subgraph monitoring["namespace monitoring"]
-        PROM["Prometheus"] -->|scrape /metrics| SVC
-        GRAF["Grafana"] --> PROM
+    classDef default fill:#ffffff,stroke:#333333,stroke-width:1px,color:#000000;
+    classDef clusterBox fill:#fafafa,stroke:#5c7c9e,stroke-width:2px,color:#1a365d;
+    classDef nsBox fill:#ffffff,stroke:#94a3b8,stroke-width:1px,stroke-dasharray: 4 4;
+
+    B["Browser Locale\n(localhost:9898)"]
+
+    subgraph Kind ["Kind Kubernetes Cluster"]
+        API["Kind API Server"]
+        
+        subgraph demo ["Namespace: demo"]
+            SVC["Service: podinfo\nPort: 9898"]
+            POD["Pod: podinfo\nPort: 9898"]
+            CM["ConfigMap\npodinfo-config"]
+            SEC["Secret\npodinfo-secret"]
+        end
+        
+        subgraph monitoring ["Namespace: monitoring"]
+            PROM["Prometheus"]
+            GRAF["Grafana"]
+        end
     end
 
+    B -- "kubectl port-forward\n(9898:9898)" --> API
+    API -- "Inoltra traffico" --> SVC
+    SVC -- "TargetPort 9898" --> POD
+    
+    CM -. "envFrom" .-> POD
+    SEC -. "envFrom" .-> POD
+    
+    PROM -- "Scrape /metrics" --> POD
+    GRAF -- "Interroga\n(PromQL)" --> PROM
+
+    class Kind clusterBox;
+    class demo,monitoring nsBox;
 
 *   **Namespace (`demo`):** Isola logicamente le risorse del progetto.
 *   **Deployment (`podinfo`):** Gestisce il ciclo di vita del Pod, assicurando che la replica richiesta sia sempre attiva.
