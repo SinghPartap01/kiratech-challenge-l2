@@ -22,17 +22,46 @@ Il flusso del deploy segue le best practice di Kubernetes:
 
 ```mermaid
 flowchart LR
-    B["Browser su localhost:9898"] -->|kubectl port-forward| API["API server di kind"]
-    API --> POD
-    subgraph demo["namespace demo"]
-        SVC["Service podinfo :9898"] --> POD["Pod podinfo"]
-        CM["ConfigMap podinfo-config"] -. variabili d'ambiente .-> POD
-        SEC["Secret podinfo-secret"] -. variabili d'ambiente .-> POD
+    %% Definizione stili per separare visivamente le aree
+    classDef external fill:#f0f4f8,stroke:#334e68,stroke-width:2px,color:#000;
+    classDef k8s fill:#f8f9fa,stroke:#9fb3c8,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef app fill:#e6f3ec,stroke:#2f855a,stroke-width:1px,color:#000;
+    classDef obs fill:#fef3e6,stroke:#c05621,stroke-width:1px,color:#000;
+
+    %% Nodo esterno
+    Browser["Browser Locale<br>(localhost:9898)"]:::external
+
+    subgraph K8s ["Kind Kubernetes Cluster"]
+        API["API Server"]:::app
+
+        subgraph Demo ["Namespace: demo"]
+            direction TB
+            SVC["Service: podinfo<br>Port: 9898"]:::app
+            POD["Pod: podinfo<br>Port: 9898"]:::app
+            CM["ConfigMap<br>podinfo-config"]:::app
+            SEC["Secret<br>podinfo-secret"]:::app
+            
+            SVC --> POD
+            CM -. "envFrom" .-> POD
+            SEC -. "envFrom" .-> POD
+        end
+
+        subgraph Mon ["Namespace: monitoring"]
+            direction TB
+            GRAF["Grafana"]:::obs
+            PROM["Prometheus"]:::obs
+            
+            GRAF --> PROM
+        end
     end
-    subgraph monitoring["namespace monitoring"]
-        PROM["Prometheus"] -->|scrape /metrics| SVC
-        GRAF["Grafana"] --> PROM
-    end
+
+    %% Flussi principali
+    Browser -- "port-forward" --> API
+    API -- "Inoltra traffico" --> SVC
+    PROM -- "Scrape /metrics" --> POD
+
+    %% Applicazione degli stili ai box esterni
+    class K8s k8s;
 ```
 *   **Namespace (`demo`):** Isola logicamente le risorse del progetto.
 *   **Deployment (`podinfo`):** Gestisce il ciclo di vita del Pod, assicurando che la replica richiesta sia sempre attiva.
