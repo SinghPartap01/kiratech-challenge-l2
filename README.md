@@ -22,45 +22,46 @@ Il flusso del deploy segue le best practice di Kubernetes:
 
 ```mermaid
 flowchart LR
-    %% Definizione stili per separare visivamente le aree
-    classDef external fill:#f0f4f8,stroke:#334e68,stroke-width:2px,color:#000;
-    classDef k8s fill:#f8f9fa,stroke:#9fb3c8,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef app fill:#e6f3ec,stroke:#2f855a,stroke-width:1px,color:#000;
-    classDef obs fill:#fef3e6,stroke:#c05621,stroke-width:1px,color:#000;
+    classDef external fill:#1e1e2f,stroke:#4e4e6f,stroke-width:2px,color:#ffffff;
+    classDef k8s fill:transparent,stroke:#5c7c9e,stroke-width:2px,stroke-dasharray: 5 5,color:#ffffff;
+    classDef app fill:#0f2417,stroke:#2f855a,stroke-width:1px,color:#ffffff;
+    classDef obs fill:#2b1a0f,stroke:#c05621,stroke-width:1px,color:#ffffff;
 
-    %% Nodo esterno
-    Browser["Browser Locale<br>(localhost:9898)"]:::external
+    Browser["Browser Locale<br/>(localhost:9898)"]:::external
+    PF["kubectl port-forward"]:::external
 
     subgraph K8s ["Kind Kubernetes Cluster"]
-        API["API Server"]:::app
+        API["Kubernetes API Server"]:::app
 
         subgraph Demo ["Namespace: demo"]
             direction TB
-            SVC["Service: podinfo<br>Port: 9898"]:::app
-            POD["Pod: podinfo<br>Port: 9898"]:::app
-            CM["ConfigMap<br>podinfo-config"]:::app
-            SEC["Secret<br>podinfo-secret"]:::app
-            
+            SVC["Service: podinfo<br/>Port: 9898"]:::app
+            POD["Pod: podinfo<br/>Port: 9898"]:::app
+            CM["ConfigMap<br/>podinfo-config"]:::app
+            SEC["Secret<br/>podinfo-secret"]:::app
+            SM["ServiceMonitor<br/>podinfo-monitor"]:::obs
+
             SVC --> POD
             CM -. "envFrom" .-> POD
             SEC -. "envFrom" .-> POD
+            SM -. "Configura scraping" .-> SVC
         end
 
         subgraph Mon ["Namespace: monitoring"]
             direction TB
-            GRAF["Grafana"]:::obs
             PROM["Prometheus"]:::obs
-            
-            GRAF --> PROM
+            GRAF["Grafana"]:::obs
+
+            GRAF -->|"Query metriche"| PROM
         end
     end
 
-    %% Flussi principali
-    Browser -- "port-forward" --> API
-    API -- "Inoltra traffico" --> SVC
-    PROM -- "Scrape /metrics" --> POD
+    Browser --> PF
+    PF -. "Tunnel tramite API Server" .-> API
+    API -. "Port-forward verso Pod" .-> POD
 
-    %% Applicazione degli stili ai box esterni
+    PROM -->|"Scrape /metrics"| SVC
+
     class K8s k8s;
 ```
 *   **Namespace (`demo`):** Isola logicamente le risorse del progetto.
