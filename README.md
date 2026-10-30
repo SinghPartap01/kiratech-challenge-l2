@@ -48,8 +48,7 @@ flowchart LR
     SEC -. "envFrom" .-> POD
     
     PROM -- "Scrape /metrics" --> POD
-    GRAF -- "Interroga\n(PromQL)" --> 
-PROM
+    GRAF -- "Interroga\n(PromQL)" --> PROM
 
 *   **Namespace (`demo`):** Isola logicamente le risorse del progetto.
 *   **Deployment (`podinfo`):** Gestisce il ciclo di vita del Pod, assicurando che la replica richiesta sia sempre attiva.
