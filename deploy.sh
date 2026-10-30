@@ -44,8 +44,6 @@ case "$ACTION" in
       fi
 
       # Apply Kubernetes manifests. The Secret was created separately.
-      # Apply Kubernetes manifests. The Secret was created separately.
-      # Apply Kubernetes manifests. The Secret was created separately.
     echo "[INFO] Applicazione dei manifest Kubernetes..."
     kubectl apply -f "${SCRIPT_DIR}/podinfo.yaml"
 
