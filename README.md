@@ -1,4 +1,4 @@
-﻿# Challenge L2 Cloud Native - Podinfo
+# Challenge L2 Cloud Native - Podinfo
 
 Questo repository contiene la soluzione da me sviluppata per la challenge tecnica per il ruolo di Apprendista L2 Cloud Native Support Engineer.
 
@@ -20,20 +20,19 @@ Podinfo è una singola applicazione progettata per mostrare le best practice su 
 
 Il flusso del deploy segue le best practice di Kubernetes:
 
-```mermaid
-graph TD
-    Client(Browser Locale) -->|Port-Forward 9898| SVC(Service: podinfo)
-    SVC -->|Load Balancing| POD(Pod: podinfo)
-    POD -->|Legge variabili| CM(ConfigMap: podinfo-config)
-    POD -->|Legge credenziali| SEC(Secret: podinfo-secret)
-
-    subgraph Namespace: demo
-        SVC
-        POD
-        CM
-        SEC
+flowchart LR
+    B["Browser su localhost:9898"] -->|kubectl port-forward| API["API server di kind"]
+    API --> POD
+    subgraph demo["namespace demo"]
+        SVC["Service podinfo :9898"] --> POD["Pod podinfo"]
+        CM["ConfigMap podinfo-config"] -. variabili d'ambiente .-> POD
+        SEC["Secret podinfo-secret"] -. variabili d'ambiente .-> POD
     end
-```
+    subgraph monitoring["namespace monitoring"]
+        PROM["Prometheus"] -->|scrape /metrics| SVC
+        GRAF["Grafana"] --> PROM
+    end
+
 
 *   **Namespace (`demo`):** Isola logicamente le risorse del progetto.
 *   **Deployment (`podinfo`):** Gestisce il ciclo di vita del Pod, assicurando che la replica richiesta sia sempre attiva.
