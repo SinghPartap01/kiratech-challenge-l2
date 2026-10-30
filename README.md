@@ -20,11 +20,8 @@ Podinfo è una singola applicazione progettata per mostrare le best practice su 
 
 Il flusso del deploy segue le best practice di Kubernetes:
 
+```mermaid
 flowchart LR
-    classDef default fill:#ffffff,stroke:#333333,stroke-width:1px,color:#000000;
-    classDef clusterBox fill:#fafafa,stroke:#5c7c9e,stroke-width:2px,color:#1a365d;
-    classDef nsBox fill:#ffffff,stroke:#94a3b8,stroke-width:1px,stroke-dasharray: 4 4;
-
     B["Browser Locale\n(localhost:9898)"]
 
     subgraph Kind ["Kind Kubernetes Cluster"]
@@ -51,10 +48,8 @@ flowchart LR
     SEC -. "envFrom" .-> POD
     
     PROM -- "Scrape /metrics" --> POD
-    GRAF -- "Interroga\n(PromQL)" --> PROM
-
-    class Kind clusterBox;
-    class demo,monitoring nsBox;
+    GRAF -- "Interroga\n(PromQL)" --> 
+PROM
 
 *   **Namespace (`demo`):** Isola logicamente le risorse del progetto.
 *   **Deployment (`podinfo`):** Gestisce il ciclo di vita del Pod, assicurando che la replica richiesta sia sempre attiva.
