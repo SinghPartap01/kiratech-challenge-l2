@@ -10,7 +10,7 @@ Prima di indagare su un problema specifico, eseguire sempre questi controlli per
 *   **Stato dei Pod:** `kubectl get pods -n demo` (Atteso: Pod in stato `Running 1/1`).
 *   **Eventi del Pod:** `kubectl describe pod -n demo -l app=podinfo` (Fondamentale: controllare sempre la sezione `Events` in fondo).
 *   **Log dell'applicazione:** `kubectl logs -n demo -l app=podinfo --tail=50` (Se il Pod è in CrashLoopBackOff, usare `--previous` per leggere i log del container crashato prima che venisse riavviato).
-*   **Endpoint di rete:** `kubectl get endpoints podinfo -n demo` (Se la colonna Endpoints è vuota, il Service non sta trovando il Pod).
+*   **Endpoint di rete:** `kubectl get endpointslice -n demo -l kubernetes.io/service-name=podinfo` (Verificare che l'EndpointSlice contenga gli indirizzi dei Pod pronti; in caso contrario, controllare selector e readiness).
 
 ---
 
@@ -33,6 +33,9 @@ Prima di indagare su un problema specifico, eseguire sempre questi controlli per
 *   **Correzione (Rollback):** Annullare l'ultima modifica al Deployment.
     ```bash
     kubectl rollout undo deployment/podinfo -n demo
+    kubectl rollout status deployment/podinfo -n demo --timeout=120s
+    kubectl get pods -n demo -l app=podinfo
+    kubectl get deployment podinfo -n demo
     ```
 *   **Escalation:** Se il tag è corretto ma il pull fallisce, potrebbe essere un rate-limit di Docker Hub o un problema di rete del nodo. In tal caso, fornire l'output completo di `describe` al team infrastrutturale.
 
@@ -43,30 +46,31 @@ Prima di indagare su un problema specifico, eseguire sempre questi controlli per
     ```
 *   **Sintomo:** L'applicazione non risponde nel browser (`ERR_CONNECTION_REFUSED`), ma il Pod è in stato `Running 1/1`.
 *   **Evidenze:**
-    ```text
-    $ kubectl get endpoints podinfo -n demo
-    NAME      ENDPOINTS         AGE
-    podinfo   10.244.0.8:9999   5m
-    ```
-    Il `describe svc` mostra chiaramente `TargetPort: 9999/TCP`.
-*   **Diagnosi:** Il Service inoltra il traffico a una porta su cui l'applicazione non è in ascolto.
-*   **Correzione (Rollback):** Il `rollout undo` non funziona (il Service non è gestito dal Deployment). La best practice è ripristinare lo stato desiderato in modo dichiarativo, riapplicando il manifest corretto o l'upgrade Helm.
     ```bash
-    helm upgrade podinfo-release ./helm -n demo
+    kubectl get endpointslice -n demo -l kubernetes.io/service-name=podinfo -o yaml
+    kubectl describe svc podinfo -n demo
+    ```
+    Nell'EndpointSlice verificare che la porta indicata in `ports` sia `9999`. Nel `describe svc` verificare che il `TargetPort` sia `9999/TCP`. L'indirizzo del Pod può essere presente: il problema è la porta di destinazione errata.
+*   **Diagnosi:** Il Service inoltra il traffico a una porta su cui l'applicazione non è in ascolto.
+*   **Correzione (Ripristino):** il `rollout undo` non ripristina il Service, perché è una risorsa distinta dal Deployment. In questo laboratorio il deploy viene eseguito tramite manifest Kubernetes: riapplicare il manifest ripristina il `targetPort` dichiarato.
+    ```bash
+    kubectl apply -f podinfo.yaml
+    kubectl describe svc podinfo -n demo
+    kubectl get endpointslice -n demo -l kubernetes.io/service-name=podinfo
     ```
 *   **Escalation:** Se la porta è corretta, verificare le NetworkPolicy o i log dell'applicazione per eventuali crash interni.
 
 ### Scenario 3: CrashLoopBackOff (Errore applicativo)
 *   **Riproduzione:** Iniettare un comando di errore nel container.
     ```bash
-    kubectl patch deployment podinfo -n demo --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/0/command","value":["/bin/sh", "-c", "echo 'Errore Fatale' && exit 1"]}]'
+    kubectl patch deployment podinfo -n demo --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/0/command","value":["/bin/sh","-c","echo Errore Fatale && exit 1"]}]'
     ```
 *   **Sintomo:** Il Pod si riavvia in continuazione. Lo stato passa da `Running` a `Error` e poi `CrashLoopBackOff`. Il contatore `RESTARTS` aumenta.
 *   **Evidenze:**
     ```text
     $ kubectl logs -n demo -l app=podinfo --previous
     Errore Fatale
-    
+
     $ kubectl describe pod -n demo -l app=podinfo
     Last State: Terminated, Reason: Error, Exit Code: 1
     ```
@@ -74,6 +78,9 @@ Prima di indagare su un problema specifico, eseguire sempre questi controlli per
 *   **Correzione (Rollback):** Annullare la modifica.
     ```bash
     kubectl rollout undo deployment/podinfo -n demo
+    kubectl rollout status deployment/podinfo -n demo --timeout=120s
+    kubectl get pods -n demo -l app=podinfo
+    kubectl logs -n demo -l app=podinfo --tail=20
     ```
 *   **Escalation:** Se l'errore è nel codice dell'applicazione (visibile dai log), fornire i log al team di sviluppo (L3).
 
@@ -82,25 +89,29 @@ Prima di indagare su un problema specifico, eseguire sempre questi controlli per
     ```bash
     kubectl patch deployment podinfo -n demo --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/readinessProbe/httpGet/path","value":"/percorso-sbagliato"}]'
     ```
-*   **Sintomo:** Il Pod è `Running` ma mostra `READY 0/1`. Il Service non gli invia traffico.
-*   **Evidenze:**
+*   **Sintomo:** Il nuovo Pod rimane in stato `Running` ma mostra `READY 0/1` perché la readiness probe fallisce. Con una replica e la strategia RollingUpdate predefinita, il vecchio Pod può rimanere Ready e continuare a servire traffico. Il Service esclude il nuovo Pod non pronto dal traffico normale.*   **Evidenze:**
     ```text
     $ kubectl describe pod -n demo -l app=podinfo
     Warning  Unhealthy  5s   kubelet  Readiness probe failed: HTTP probe failed with statuscode: 404
     ```
-*   **Diagnosi:** La sonda punta a un endpoint inesistente. Kubernetes esclude il Pod dal bilanciamento del carico.
+*   **Diagnosi:** La readiness probe richiama un endpoint inesistente e riceve HTTP 404. Kubernetes non considera il nuovo Pod pronto e non lo utilizza come endpoint disponibile per il traffico normale del Service.
 *   **Correzione (Rollback):** Annullare la modifica.
     ```bash
     kubectl rollout undo deployment/podinfo -n demo
+    kubectl rollout status deployment/podinfo -n demo --timeout=120s
+    kubectl get pods -n demo -l app=podinfo
+    kubectl get endpointslice -n demo -l kubernetes.io/service-name=podinfo
     ```
 *   **Escalation:** Se il path è corretto, verificare i log e l'uso di CPU/RAM. Se la liveness fallisse al posto della readiness, il container verrebbe riavviato in loop.
 
 ### Scenario 5: OOMKilled (Out Of Memory)
 *   **Riproduzione:** Impostare un limite di memoria troppo basso per l'applicazione.
     ```bash
-    kubectl set resources deployment/podinfo -n demo --limits=memory=10Mi
+    kubectl set resources deployment/podinfo -n demo \
+     --requests=memory=5Mi \
+     --limits=memory=10Mi
     ```
-*   **Sintomo:** Il Pod va in stato `OOMKilled` o `CrashLoopBackOff` poco dopo l'avvio.
+*   **Sintomo:** Il container supera il limite di memoria e viene terminato dal kernel con motivo `OOMKilled`. Kubernetes tenta di riavviarlo; il Pod puo quindi mostrare `CrashLoopBackOff` nella colonna STATUS di `kubectl get pods`.
 *   **Evidenze:**
     ```text
     $ kubectl describe pod -n demo -l app=podinfo
@@ -112,9 +123,11 @@ Prima di indagare su un problema specifico, eseguire sempre questi controlli per
 *   **Correzione (Rollback):** Annullare la modifica o aumentare il limite.
     ```bash
     kubectl rollout undo deployment/podinfo -n demo
+    kubectl rollout status deployment/podinfo -n demo --timeout=120s
+    kubectl get pods -n demo -l app=podinfo
+    kubectl describe deployment podinfo -n demo
     ```
-*   **Escalation:** Se l'applicazione necessita di più memoria di quanta ne abbia il nodo, richiedere uno scale-up del cluster o analizzare memory leak con il team L3.
-
+*   **Escalation:** Se il consumo di memoria supera ripetutamente il limite configurato, raccogliere metriche e log per verificare se si tratta di un fabbisogno applicativo legittimo o di un possibile memory leak. Se necessario, richiedere una revisione dei memory limits e verificare la capacità allocabile del nodo con il team infrastrutturale.
 ---
 
 ## 3. Criteri Generali di Escalation

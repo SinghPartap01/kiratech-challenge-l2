@@ -4,7 +4,8 @@ on: [push, pull_request]
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,11 +26,24 @@ jobs:
       - name: Render Helm chart
         run: helm template podinfo-release ./helm --namespace demo > rendered.yaml
 
+      - name: Verify Helm port parametrization
+        run: |
+          helm template podinfo-test ./helm --namespace demo \
+            --set containerPort=9999 > rendered-test.yaml
+
+          grep -q 'containerPort: 9999' rendered-test.yaml
+          grep -q 'targetPort: 9999' rendered-test.yaml
+          test "$(grep -cE '^[[:space:]]+port: 9999$' rendered-test.yaml)" -eq 2
+          grep -qE '^[[:space:]]+port: 9898$' rendered-test.yaml
+
       - name: Validate YAML with kubeconform
         run: |
           docker run --rm -v "$PWD:/work" ghcr.io/yannh/kubeconform:latest \
             -strict -ignore-missing-schemas -summary \
-            /work/podinfo.yaml /work/rendered.yaml /work/podinfo-monitor.yaml
+            /work/podinfo.yaml \
+            /work/rendered.yaml \
+            /work/rendered-test.yaml \
+            /work/podinfo-monitor.yaml
 
       - name: Shellcheck per deploy.sh
         run: shellcheck deploy.sh

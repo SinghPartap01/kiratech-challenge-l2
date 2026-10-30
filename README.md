@@ -26,7 +26,7 @@ graph TD
     SVC -->|Load Balancing| POD(Pod: podinfo)
     POD -->|Legge variabili| CM(ConfigMap: podinfo-config)
     POD -->|Legge credenziali| SEC(Secret: podinfo-secret)
-    
+
     subgraph Namespace: demo
         SVC
         POD
@@ -55,39 +55,52 @@ graph TD
 ## 4. Prerequisiti
 
 Per eseguire questo progetto è necessario avere installato:
-*   Docker Desktop (con WSL2 attivo)
-*   Kind (versione consigliata: v0.22.0 o superiore)
-*   Kubectl (versione consigliata: v1.29.0 o superiore)
-*   Helm (versione consigliata: v3.14.0 o superiore)
-*   OpenSSL (per la generazione del Secret a runtime)
+
+* Docker Desktop (con WSL2 attivo su Windows)
+* Kind (versione consigliata: v0.22.0 o superiore)
+* Kubectl (versione consigliata: v1.29.0 o superiore)
+* Helm (versione consigliata: v3.14.0 o superiore)
+* Bash (Git Bash su Windows)
+* OpenSSL (necessario solo per la generazione manuale del Secret nell'opzione C)
+
 
 ## 5. Installazione e Deploy
 
-Il progetto supporta diverse modalità di deploy.
+Il progetto supporta tre modalità di deploy.
 
 **Opzione A: Deploy tramite Automazione (Consigliato)**
-Lo script `deploy.sh` gestisce l'intero ciclo di vita: verifica i prerequisiti, crea il cluster se assente, genera un Secret sicuro a runtime e installa il chart Helm.
+
+Lo script `deploy.sh` automatizza il deploy tramite manifest Kubernetes: verifica i prerequisiti, crea il cluster Kind se assente, seleziona il contesto corretto, crea il namespace, genera un Secret casuale se non esiste già, applica i manifest e verifica il rollout del Deployment.
+
 ```bash
 ./deploy.sh install
 ```
 
 **Opzione B: Deploy tramite Helm (Manuale)**
+
+Il Chart Helm gestisce Deployment, Service, ConfigMap e Secret. La chiave viene generata al primo install e mantenuta durante gli upgrade tramite la funzione `lookup`.
+
 ```bash
-kind create cluster
-kubectl create namespace demo
-kubectl -n demo create secret generic podinfo-secret --from-literal=API_KEY="$(openssl rand -base64 32)"
-helm install podinfo-release ./helm -n demo
+kind create cluster --name kind
+helm upgrade --install podinfo-release ./helm \
+  --namespace demo-helm \
+  --create-namespace \
+  --wait
 ```
 
 **Opzione C: Deploy tramite Manifest YAML (Manuale)**
+
+Il manifest `podinfo.yaml` contiene Namespace, ConfigMap, Deployment e Service. Il Secret viene creato separatamente.
+
 ```bash
-kind create cluster
+kind create cluster --name kind
 kubectl create namespace demo
-kubectl -n demo create secret generic podinfo-secret --from-literal=API_KEY="$(openssl rand -base64 32)"
+kubectl -n demo create secret generic podinfo-secret \
+  --from-literal=API_KEY="$(openssl rand -base64 32)"
 kubectl apply -f podinfo.yaml
 ```
 
-**Nota sulle immagini:** L'applicazione utilizza l'immagine ufficiale `stefanprodan/podinfo:6.4.0`. L'immagine è basata su un filesystem minimale, gira con utente non-root (UID 1000) ed espone la porta 9898. Non è stato necessario creare un Dockerfile custom in quanto l'immagine upstream rispetta già le best practice di sicurezza Cloud Native.
+**Nota sulle immagini:** viene utilizzata l'immagine ufficiale `stefanprodan/podinfo:6.4.0`. Non è stato necessario creare un Dockerfile personalizzato perché l'immagine upstream soddisfa già i requisiti del laboratorio.
 
 ## 6. Verifica e Accesso
 
@@ -129,7 +142,7 @@ Infine, ho eseguito il port-forward verso il servizio di Grafana (`kubectl port-
 
 ## 8. Troubleshooting e Incident Management
 
-Il cuore del progetto è rappresentato dal [Runbook L2](./runbook-l2.md). 
+Il cuore del progetto è rappresentato dal [Runbook L2](./runbook-l2.md).
 
 Ho riprodotto e documentato 5 scenari di errore: `ImagePullBackOff`, `Connection Refused` (errore di rete/Service), `CrashLoopBackOff`, `Readiness Probe Failed` e `OOMKilled`. Per ogni scenario ho incluso i comandi di riproduzione, la raccolta delle evidenze (`kubectl get`, `describe`, `logs`), la diagnosi, la correzione/rollback e i criteri di escalation verso il team di sviluppo.
 
@@ -138,7 +151,7 @@ Ho riprodotto e documentato 5 scenari di errore: `ImagePullBackOff`, `Connection
 Questa è la sezione che racconta il "dietro le quinte" del progetto, dove ho incontrato e risolto gli ostacoli più complessi:
 
 *   **L'errore YAML (`control characters are not allowed`):** Durante i primi deploy, `kubectl apply` falliva in continuazione. Inizialmente pensavo a un errore di indentazione, ma dopo aver controllato più volte il file ho capito che il problema era dovuto al copia-incolla da Windows, che inseriva caratteri invisibili (come i ritorni a capo CRLF). Ho risolto impostando VS Code su LF, usando solo spazi per l'indentazione e salvando in formato UTF-8.
-*   **Il problema della codifica su GitHub (`cp1252`):** Dopo aver caricato i file su GitHub, mi sono accorto che tutte le lettere accentate (è, à, ù) sparivano o diventavano simboli strani. Ho scoperto che Windows salvava di default in `cp1252`. Ho riconvertito tutti i file in UTF-8 e ho aggiunto un file `.gitattributes` per obbligare Git a mantenere i fine riga in formato LF e la codifica corretta.
+*   **Il problema della codifica su GitHub (`cp1252`):** Dopo aver caricato i file su GitHub, mi sono accorto che tutte le lettere accentate (è, à, ù) sparivano o diventavano simboli strani. Ho scoperto che Windows salvava di default in `cp1252`. Ho riconvertito i file in UTF-8 e aggiunto `.gitattributes` per mantenere coerenti i fine riga in formato LF durante le operazioni Git.
 *   **Il bug del Chart Helm (`#` come commento):** Nel creare il Chart, mi sono accorto che il colore di Podinfo (impostato via ConfigMap) non cambiava. Non capivo il motivo, finché non ho fatto un `helm template` e ho visto che il valore generato era vuoto. Il carattere `#` nel codice esadecimale del colore (`#1a1a2e`) veniva letto da YAML come l'inizio di un commento. Ho risolto aggiungendo il filtro `| quote` nel template, in modo da forzare il valore a essere una stringa racchiusa tra virgolette.
 
 ## 10. Uso dell'AI
@@ -153,7 +166,7 @@ Ogni comando suggerito è stato eseguito, compreso e verificato da me sul mio am
 
 ## 11. Valutazione Concettuale di Krateo
 
-Krateo è una piattaforma di Platform Engineering progettata per standardizzare e orchestrare il deployment di risorse su Kubernetes. 
+Krateo è una piattaforma di Platform Engineering progettata per standardizzare e orchestrare il deployment di risorse su Kubernetes.
 
 Il suo ruolo principale è spostare l'attenzione dalla scrittura manuale di manifest YAML alla creazione di **template riutilizzabili**. In un'ottica enterprise, Krateo permetterebbe di creare una "Custom Resource Definition" (CRD) astratta per Podinfo. L'utente finale (es. un team di sviluppo) non dovrebbe conoscere i dettagli di Kubernetes, ma fornirebbe solo pochi parametri essenziali. Krateo orchestrerebbe automaticamente la creazione di Deployment, Service e Ingress, applicando policy di sicurezza centralizzate.
 
@@ -187,8 +200,8 @@ spec:
 
 ## 12. Limiti della Soluzione e Sicurezza
 
-- **Gestione dei Secret:** Il repository non contiene password in chiaro. Il Secret `API_KEY` viene generato dinamicamente a runtime dallo script `deploy.sh` utilizzando `openssl rand -base64 32`, garantendo che nessuna credenziale statica sia versionata su Git. Per un ambiente di produzione, si raccomanda l'uso di soluzioni come Sealed Secrets o HashiCorp Vault, poiché i Secret nativi di Kubernetes sono solo codificati in base64 e non cifrati.
-- **Sicurezza del Pod:** Nel manifest e nel chart Helm è stato implementato il `securityContext` con `runAsNonRoot: true`, `allowPrivilegeEscalation: false` e `readOnlyRootFilesystem: true`. Questo garantisce che l'applicazione non giri come root e non possa scrivere sul filesystem locale.
+- **Gestione dei Secret:** Il repository non contiene password in chiaro. Lo script `deploy.sh` genera dinamicamente la chiave `API_KEY` utilizzando 32 byte casuali da `/dev/urandom`, codificati in Base64. Nel percorso Helm, il Secret viene generato dal Chart e mantenuto durante gli upgrade tramite `lookup`. Per un ambiente di produzione si raccomanda l'utilizzo di soluzioni dedicate come Sealed Secrets o HashiCorp Vault. I Secret Kubernetes sono codificati in Base64 e, senza configurazione aggiuntiva, non sono automaticamente cifrati a riposo.-
+- **Sicurezza del Pod:** Nel manifest e nel Chart Helm sono configurati `runAsNonRoot: true`, UID 1000, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true` e la rimozione delle capabilities Linux. Queste impostazioni riducono i privilegi del container e limitano la possibilità di modificare il filesystem root.
 - **Sicurezza del Cluster:** Non ho implementato NetworkPolicy o RBAC avanzati, in quanto l'obiettivo era focalizzarsi sul supporto L2. In produzione, sarebbero configurazioni necessarie.
 - **Infrastruttura:** Kind è un cluster a nodo singolo, quindi non offre tolleranza ai guasti infrastrutturali.
 
